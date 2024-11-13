@@ -41,6 +41,8 @@ describe("LogController", () => {
   });
 
   describe("getLogs", () => {
+    const topicA = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+    const topicB = "0x0000000000000000000000000000000000000000000000000000000000000000";
     it("calls logs service with specified filter and paging params", async () => {
       await controller.getLogs(
         address,
@@ -60,6 +62,57 @@ describe("LogController", () => {
         page: 2,
         offset: 20,
         maxLimit: 10000,
+        topics: [],
+      });
+    });
+
+    it("calls logs service with single topic param", async () => {
+      await controller.getLogs(
+        address,
+        {
+          page: 0,
+          offset: 0,
+          maxLimit: 10000,
+        },
+        0,
+        10,
+        topicA
+      );
+      expect(logServiceMock.findMany).toBeCalledTimes(1);
+      expect(logServiceMock.findMany).toBeCalledWith({
+        address,
+        fromBlock: 0,
+        toBlock: 10,
+        page: 0,
+        offset: 0,
+        maxLimit: 10000,
+        topics: topicA,
+      });
+    });
+
+    it("calls logs service with multiple topics and operator", async () => {
+      await controller.getLogs(
+        address,
+        {
+          page: 0,
+          offset: 0,
+          maxLimit: 10000,
+        },
+        0,
+        10,
+        topicA,
+        topicB,
+        "and"
+      );
+      expect(logServiceMock.findMany).toBeCalledTimes(1);
+      expect(logServiceMock.findMany).toBeCalledWith({
+        address,
+        fromBlock: 0,
+        toBlock: 10,
+        page: 0,
+        offset: 0,
+        maxLimit: 10000,
+        topics: [{ topics: [topicA, topicB], operator: "AND" }],
       });
     });
 

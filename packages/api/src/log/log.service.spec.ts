@@ -1,17 +1,19 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { mock } from "jest-mock-extended";
 import { getRepositoryToken } from "@nestjs/typeorm";
-import { Repository, SelectQueryBuilder, MoreThanOrEqual, LessThanOrEqual } from "typeorm";
+import { Repository, SelectQueryBuilder, MoreThanOrEqual, LessThanOrEqual, QueryBuilder } from "typeorm";
 import { Pagination, IPaginationMeta } from "nestjs-typeorm-paginate";
 import * as utils from "../common/utils";
-import { LogService, FilterLogsOptions, FilterLogsByAddressOptions } from "./log.service";
+import { LogService, FilterLogsOptions, FilterLogsByAddressOptions, TopicOption } from "./log.service";
 import { Log } from "./log.entity";
+import { TopicOperator } from "../common/pipes/parseTopicOperator.pipe";
 
 jest.mock("../common/utils");
 
 describe("LogService", () => {
   let service: LogService;
   let repositoryMock: Repository<Log>;
+  let queryBuilderMock: SelectQueryBuilder<Log>;
 
   const pagingOptions = {
     limit: 10,
@@ -20,6 +22,23 @@ describe("LogService", () => {
 
   beforeEach(async () => {
     repositoryMock = mock<Repository<Log>>();
+
+    queryBuilderMock = {
+      expressionMap: {
+        wheres: [],
+      },
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      leftJoin: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      offset: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
+      getSql: jest.fn().mockReturnValue(""),
+      getParameters: jest.fn().mockReturnValue({}),
+    } as unknown as SelectQueryBuilder<Log>;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -43,7 +62,23 @@ describe("LogService", () => {
     let filterOptions: FilterLogsOptions;
 
     beforeEach(() => {
-      queryBuilderMock = mock<SelectQueryBuilder<Log>>();
+      queryBuilderMock = {
+        expressionMap: {
+          wheres: [],
+        },
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        offset: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([]),
+        getSql: jest.fn().mockReturnValue(""),
+        getParameters: jest.fn().mockReturnValue({}),
+      } as unknown as SelectQueryBuilder<Log>;
+
       (repositoryMock.createQueryBuilder as jest.Mock).mockReturnValue(queryBuilderMock);
     });
 
@@ -104,9 +139,27 @@ describe("LogService", () => {
   describe("findMany", () => {
     let queryBuilderMock;
     let filterOptions: FilterLogsByAddressOptions;
+    let wheres = [];
 
     beforeEach(() => {
-      queryBuilderMock = mock<SelectQueryBuilder<Log>>();
+      wheres = [];
+      queryBuilderMock = {
+        expressionMap: {
+          wheres,
+        },
+        where: jest.fn(() => wheres.push({})),
+        andWhere: jest.fn(() => wheres.push({})),
+        leftJoin: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        offset: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([]),
+        getSql: jest.fn().mockReturnValue(""),
+        getParameters: jest.fn().mockReturnValue({}),
+      } as unknown as SelectQueryBuilder<Log>;
+
       (repositoryMock.createQueryBuilder as jest.Mock).mockReturnValue(queryBuilderMock);
 
       filterOptions = {
@@ -114,8 +167,62 @@ describe("LogService", () => {
       };
     });
 
+    describe("when topics is an array", () => {
+      const topic1 = "topic1";
+      const topic2 = "topic2";
+      const topic1Buffer = Buffer.from(topic1, "hex");
+      const topic2Buffer = Buffer.from(topic2, "hex");
+      const topicsArray: Array<TopicOption> = [{ topics: ["topic1", "topic2"], operator: TopicOperator.AND }];
+
+      it("builds correct query with address", async () => {
+        await service.findMany({
+          ...filterOptions,
+          topics: topicsArray,
+        });
+
+        expect(queryBuilderMock.andWhere).toBeCalledWith(":topic0a = ANY(log.topics) AND :topic0b = ANY(log.topics)", {
+          topic0a: topic1Buffer,
+          topic0b: topic2Buffer,
+        });
+      });
+
+      it("builds correct query without address", async () => {
+        await service.findMany({
+          topics: topicsArray,
+        });
+
+        expect(queryBuilderMock.where).toBeCalledWith(":topic0a = ANY(log.topics) AND :topic0b = ANY(log.topics)", {
+          topic0a: topic1Buffer,
+          topic0b: topic2Buffer,
+        });
+      });
+    });
+
     describe("when address filter options is specified", () => {
+      let filterOptions: FilterLogsByAddressOptions;
+      let wheres = [];
+
       beforeEach(() => {
+        wheres = [];
+        queryBuilderMock = {
+          expressionMap: {
+            wheres,
+          },
+          where: jest.fn(() => wheres.push({})),
+          andWhere: jest.fn(() => wheres.push({})),
+          leftJoin: jest.fn().mockReturnThis(),
+          addSelect: jest.fn().mockReturnThis(),
+          offset: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          addOrderBy: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue([]),
+          getSql: jest.fn().mockReturnValue(""),
+          getParameters: jest.fn().mockReturnValue({}),
+        } as unknown as SelectQueryBuilder<Log>;
+
+        (repositoryMock.createQueryBuilder as jest.Mock).mockReturnValue(queryBuilderMock);
+
         jest.spyOn(queryBuilderMock, "getMany").mockResolvedValue([
           {
             logIndex: 1,
@@ -124,6 +231,10 @@ describe("LogService", () => {
             logIndex: 2,
           },
         ]);
+
+        filterOptions = {
+          address: "address",
+        };
       });
 
       it("creates query builder with proper params", async () => {
@@ -148,9 +259,12 @@ describe("LogService", () => {
       it("filters logs by address", async () => {
         await service.findMany(filterOptions);
         expect(queryBuilderMock.where).toBeCalledTimes(1);
-        expect(queryBuilderMock.where).toHaveBeenCalledWith({
-          address: filterOptions.address,
-        });
+        expect(queryBuilderMock.where).toHaveBeenCalledWith(
+          {
+            address: filterOptions.address,
+          },
+          undefined
+        );
       });
 
       describe("when fromBlock filter is specified", () => {
@@ -160,9 +274,12 @@ describe("LogService", () => {
             fromBlock: 10,
           });
           expect(queryBuilderMock.andWhere).toBeCalledTimes(1);
-          expect(queryBuilderMock.andWhere).toHaveBeenCalledWith({
-            blockNumber: MoreThanOrEqual(10),
-          });
+          expect(queryBuilderMock.andWhere).toHaveBeenCalledWith(
+            {
+              blockNumber: MoreThanOrEqual(10),
+            },
+            undefined
+          );
         });
       });
 
@@ -173,9 +290,12 @@ describe("LogService", () => {
             toBlock: 10,
           });
           expect(queryBuilderMock.andWhere).toBeCalledTimes(1);
-          expect(queryBuilderMock.andWhere).toHaveBeenCalledWith({
-            blockNumber: LessThanOrEqual(10),
-          });
+          expect(queryBuilderMock.andWhere).toHaveBeenCalledWith(
+            {
+              blockNumber: LessThanOrEqual(10),
+            },
+            undefined
+          );
         });
       });
 
